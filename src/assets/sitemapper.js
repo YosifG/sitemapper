@@ -138,7 +138,7 @@ export default class Sitemapper {
    * @example sitemapper.url = 'https://wp.seantburke.com/sitemap.xml'
    */
   static set url(url) {
-    this.url = url;
+    this.url = 'https://wp.seantburke.com/sitemap.xml';
   }
 
   /**

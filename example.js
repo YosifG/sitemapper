@@ -54,3 +54,5 @@ sitemapper.getSites('https://wp.seantburke.com/sitemap.xml', function (err, site
   }
 });
 
+
+console.log("wee")
