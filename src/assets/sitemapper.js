@@ -44,6 +44,7 @@ export default class Sitemapper {
     this.debug = settings.debug;
     this.concurrency = settings.concurrency || 10;
     this.retries = settings.retries || 0;
+    this.urlCounter = 0;
     this.rejectUnauthorized =
       settings.rejectUnauthorized === false ? false : true;
   }
@@ -264,7 +265,6 @@ export default class Sitemapper {
    * @returns {Promise<SitesData>}
    */
   async crawl(url, retryIndex = 0) {
-    let urlCounter = 0
     try {
       const { error, data } = await this.parse(url);
       // The promise resolved, remove the timeout
