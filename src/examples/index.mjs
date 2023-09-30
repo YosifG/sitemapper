@@ -1,7 +1,8 @@
-import Sitemapper from '../assets/sitemapper';
+import Sitemapper from '../assets/sitemapper.mjs';
+
 
 // URL to be crawled
-const exampleURL = 'https://www.walmart.com/sitemap_topic.xml';
+const exampleURL = 'https://www.edna.bg/sitemap.xml';
 
 // Instantiate an instance
 const sitemapper = new Sitemapper({
