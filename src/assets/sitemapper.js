@@ -57,8 +57,7 @@ export default class Sitemapper {
    * @example sitemapper.fetch('example.xml')
    *  .then((sites) => console.log(sites));
    */
-  async fetch(url = this.url, maxUrls = 20) {
-    console.log("ABCEFRFMFOFJIOJO")
+  async fetch(url = this.url) {
     // initialize empty variables
     let results = {
       url: "",
@@ -76,7 +75,7 @@ export default class Sitemapper {
 
     try {
       // crawl the URL
-      results = await this.crawl(url, maxUrls=200);
+      results = await this.crawl(url);
     } catch (e) {
       // show errors that may occur
       if (this.debug) {
@@ -264,7 +263,8 @@ export default class Sitemapper {
    * @param {integer} retryIndex - Number of retry attempts fro this URL (e.g. 0 for 1st attempt, 1 for second attempty etc.)
    * @returns {Promise<SitesData>}
    */
-  async crawl(url, maxUrls, retryIndex = 0) {
+  async crawl(url, retryIndex = 0) {
+    let urlCounter = 0
     try {
       const { error, data } = await this.parse(url);
       // The promise resolved, remove the timeout
@@ -281,7 +281,7 @@ export default class Sitemapper {
               }) ${url} due to ${data.name} on previous request`
             );
           }
-          return this.crawl(url, maxUrls, retryIndex + 1);
+          return this.crawl(url, retryIndex + 1);
         }
 
         if (this.debug) {
@@ -289,6 +289,8 @@ export default class Sitemapper {
             `Error occurred during "crawl('${url}')":\n\r Error: ${error}`
           );
         }
+
+        
 
         // Fail and log error
         return {
@@ -307,6 +309,16 @@ export default class Sitemapper {
         if (this.debug) {
           console.debug(`Urlset found during "crawl('${url}')"`);
         }
+
+        this.urlCounter++;
+
+        if (this.urlCounter >= 40) {
+          return {
+            sites: [], // Return empty sites array to signal stopping
+            errors: [],
+          };
+        }
+
         // filter out any urls that are older than the lastmod
         const sites = data.urlset.url
           .filter((site) => {
@@ -317,17 +329,6 @@ export default class Sitemapper {
             return modified >= this.lastmod;
           })
           .map((site) => site.loc && site.loc[0]);
-
-
-          // Check if the number of collected URLs exceeds the limit
-          if (sites.length >= maxUrls) {
-            return {
-              sites: sites.slice(0, maxUrls), // Return only the first 'maxUrls' URLs
-              errors: [],
-            };
-          }
-
-
         return {
           sites,
           errors: [],
@@ -345,7 +346,7 @@ export default class Sitemapper {
         // Parse all child urls within the concurrency limit in the settings
         const limit = pLimit(this.concurrency);
         const promiseArray = sitemap.map((site) =>
-          limit(() => this.crawl(site, maxUrls))
+          limit(() => this.crawl(site))
         );
 
         // Make sure all the promises resolve then filter and reduce the array
@@ -356,13 +357,6 @@ export default class Sitemapper {
         const errors = results
           .filter((result) => result.errors.length !== 0)
           .reduce((prev, { errors }) => [...prev, ...errors], []);
-
-          if (collectedSites.length >= maxUrls) {
-            return {
-              sites: collectedSites.slice(0, maxUrls), // Return only the first 'maxUrls' URLs
-              errors,
-            };
-          }
 
         return {
           sites,
@@ -379,7 +373,7 @@ export default class Sitemapper {
             }) ${url} due to ${data.name} on previous request`
           );
         }
-        return this.crawl(url, maxUrls, retryIndex + 1);
+        return this.crawl(url, retryIndex + 1);
       }
       if (this.debug) {
         console.error(`Unknown state during "crawl('${url})'":`, error, data);
