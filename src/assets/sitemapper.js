@@ -57,7 +57,8 @@ export default class Sitemapper {
    * @example sitemapper.fetch('example.xml')
    *  .then((sites) => console.log(sites));
    */
-  async fetch(url = this.url, maxUrls = 200) {
+  async fetch(url = this.url, maxUrls = 20) {
+    console.log("ABCEFRFMFOFJIOJO")
     // initialize empty variables
     let results = {
       url: "",
@@ -280,7 +281,7 @@ export default class Sitemapper {
               }) ${url} due to ${data.name} on previous request`
             );
           }
-          return this.crawl(url, maxUrls retryIndex + 1);
+          return this.crawl(url, maxUrls, retryIndex + 1);
         }
 
         if (this.debug) {
