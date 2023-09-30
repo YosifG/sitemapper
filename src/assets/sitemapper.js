@@ -401,6 +401,8 @@ export default class Sitemapper {
       "function .getSites() is deprecated, please use the function .fetch()\r\n"
     );
 
+    console.log("ABCDEFGH----------------------")
+
     let err = {};
     let sites = [];
     try {
