@@ -44,7 +44,8 @@ export default class Sitemapper {
     this.debug = settings.debug;
     this.concurrency = settings.concurrency || 10;
     this.retries = settings.retries || 0;
-    this.urlCounter = 0;
+    this.urlsParsedCounter = 0;
+    this.maxUrlsParsed = 120
     this.rejectUnauthorized =
       settings.rejectUnauthorized === false ? false : true;
   }
@@ -59,6 +60,7 @@ export default class Sitemapper {
    *  .then((sites) => console.log(sites));
    */
   async fetch(url = this.url) {
+    console.log("FETCH")
     // initialize empty variables
     let results = {
       url: "",
@@ -77,6 +79,9 @@ export default class Sitemapper {
     try {
       // crawl the URL
       results = await this.crawl(url);
+      if(results.sites.length > this.maxUrlsParsed) {
+        results.sites = results.sites.slice(0,this.maxUrlsParsed)
+      }
     } catch (e) {
       // show errors that may occur
       if (this.debug) {
@@ -176,6 +181,9 @@ export default class Sitemapper {
    * @returns {Promise<ParseData>}
    */
   async parse(url = this.url) {
+    console.log("PARSEPARSE")
+
+
     // setup the response options for the got request
     const requestOptions = {
       method: "GET",
@@ -197,6 +205,7 @@ export default class Sitemapper {
 
       // get the response from the requester promise
       const response = await requester;
+      
 
       // if the response does not have a successful status code then clear the timeout for this url.
       if (!response || response.statusCode !== 200) {
@@ -215,6 +224,19 @@ export default class Sitemapper {
       // otherwise parse the XML that was returned.
       const data = await parseStringPromise(responseBody);
 
+      try {
+        this.urlsParsedCounter = this.urlsParsedCounter + data.urlset.url.length
+        console.log(this.urlsParsedCounter)
+      }
+      catch (error) {
+        console.log(error)
+      }
+
+      if(this.urlsParsedCounter > this.maxUrlsParsed) {
+        this.timeout = -1
+      }
+
+      
       // return the results
       return { error: null, data };
     } catch (error) {
@@ -264,14 +286,100 @@ export default class Sitemapper {
    * @param {integer} retryIndex - Number of retry attempts fro this URL (e.g. 0 for 1st attempt, 1 for second attempty etc.)
    * @returns {Promise<SitesData>}
    */
-  async crawl(url, retryIndex = 0) {
-    try {
-      const { error, data } = await this.parse(url);
-      // The promise resolved, remove the timeout
-      clearTimeout(this.timeoutTable[url]);
-
-      if (error) {
-        // Handle errors during sitemap parsing / request
+  async crawl(url, retryIndex = 0) {    
+      try {
+        console.log("CRAWL")
+  
+        const { error, data } = await this.parse(url);
+  
+        // The promise resolved, remove the timeout
+        clearTimeout(this.timeoutTable[url]);
+  
+        if (error) {
+          // Handle errors during sitemap parsing / request
+          // Retry on error until you reach the retry limit set in the settings
+          if (retryIndex < this.retries) {
+            if (this.debug) {
+              console.log(
+                `(Retry attempt: ${retryIndex + 1} / ${
+                  this.retries
+                }) ${url} due to ${data.name} on previous request`
+              );
+            }
+            return this.crawl(url, retryIndex + 1);
+          }
+  
+          if (this.debug) {
+            console.error(
+              `Error occurred during "crawl('${url}')":\n\r Error: ${error}`
+            );
+          }
+  
+          
+  
+          // Fail and log error
+          return {
+            sites: [],
+            errors: [
+              {
+                type: data.name,
+                message: error,
+                url,
+                retries: retryIndex,
+              },
+            ],
+          };
+        } else if (data && data.urlset && data.urlset.url) {
+          // Handle URLs found inside the sitemap
+          if (this.debug) {
+            console.debug(`Urlset found during "crawl('${url}')"`);
+          }
+  
+          // filter out any urls that are older than the lastmod
+          const sites = data.urlset.url
+            .filter((site) => {
+              if (this.lastmod === 0) return true;
+              if (site.lastmod === undefined) return false;
+              const modified = new Date(site.lastmod[0]).getTime();
+  
+              return modified >= this.lastmod;
+            })
+            .map((site) => site.loc && site.loc[0]);
+          return {
+            sites,
+            errors: [],
+          };
+        } else if (data && data.sitemapindex) {
+          // Handle child sitemaps found inside the active sitemap
+          if (this.debug) {
+            console.debug(`Additional sitemap found during "crawl('${url}')"`);
+          }
+          // Map each child url into a promise to create an array of promises
+          const sitemap = data.sitemapindex.sitemap.map(
+            (map) => map.loc && map.loc[0]
+          );
+  
+          // Parse all child urls within the concurrency limit in the settings
+          const limit = pLimit(this.concurrency);
+          const promiseArray = sitemap.map((site) =>
+            limit(() => this.crawl(site))
+          );
+  
+          // Make sure all the promises resolve then filter and reduce the array
+          const results = await Promise.all(promiseArray);
+          const sites = results
+            .filter((result) => result.errors.length === 0)
+            .reduce((prev, { sites }) => [...prev, ...sites], []);
+          const errors = results
+            .filter((result) => result.errors.length !== 0)
+            .reduce((prev, { errors }) => [...prev, ...errors], []);
+  
+          return {
+            sites,
+            errors,
+          };
+        }
+  
         // Retry on error until you reach the retry limit set in the settings
         if (retryIndex < this.retries) {
           if (this.debug) {
@@ -283,119 +391,29 @@ export default class Sitemapper {
           }
           return this.crawl(url, retryIndex + 1);
         }
-
         if (this.debug) {
-          console.error(
-            `Error occurred during "crawl('${url}')":\n\r Error: ${error}`
-          );
+          console.error(`Unknown state during "crawl('${url})'":`, error, data);
         }
-
-        
-
+  
         // Fail and log error
         return {
           sites: [],
           errors: [
             {
-              type: data.name,
-              message: error,
               url,
+              type: data.name || "UnknownStateError",
+              message: "An unknown error occurred.",
               retries: retryIndex,
             },
           ],
         };
-      } else if (data && data.urlset && data.urlset.url) {
-        // Handle URLs found inside the sitemap
+      } catch (e) {
         if (this.debug) {
-          console.debug(`Urlset found during "crawl('${url}')"`);
+          this.debug && console.error(e);
         }
-
-        this.urlCounter++;
-
-        if (this.urlCounter >= 40) {
-          return {
-            sites: [], // Return empty sites array to signal stopping
-            errors: [],
-          };
-        }
-
-        // filter out any urls that are older than the lastmod
-        const sites = data.urlset.url
-          .filter((site) => {
-            if (this.lastmod === 0) return true;
-            if (site.lastmod === undefined) return false;
-            const modified = new Date(site.lastmod[0]).getTime();
-
-            return modified >= this.lastmod;
-          })
-          .map((site) => site.loc && site.loc[0]);
-        return {
-          sites,
-          errors: [],
-        };
-      } else if (data && data.sitemapindex) {
-        // Handle child sitemaps found inside the active sitemap
-        if (this.debug) {
-          console.debug(`Additional sitemap found during "crawl('${url}')"`);
-        }
-        // Map each child url into a promise to create an array of promises
-        const sitemap = data.sitemapindex.sitemap.map(
-          (map) => map.loc && map.loc[0]
-        );
-
-        // Parse all child urls within the concurrency limit in the settings
-        const limit = pLimit(this.concurrency);
-        const promiseArray = sitemap.map((site) =>
-          limit(() => this.crawl(site))
-        );
-
-        // Make sure all the promises resolve then filter and reduce the array
-        const results = await Promise.all(promiseArray);
-        const sites = results
-          .filter((result) => result.errors.length === 0)
-          .reduce((prev, { sites }) => [...prev, ...sites], []);
-        const errors = results
-          .filter((result) => result.errors.length !== 0)
-          .reduce((prev, { errors }) => [...prev, ...errors], []);
-
-        return {
-          sites,
-          errors,
-        };
       }
+    
 
-      // Retry on error until you reach the retry limit set in the settings
-      if (retryIndex < this.retries) {
-        if (this.debug) {
-          console.log(
-            `(Retry attempt: ${retryIndex + 1} / ${
-              this.retries
-            }) ${url} due to ${data.name} on previous request`
-          );
-        }
-        return this.crawl(url, retryIndex + 1);
-      }
-      if (this.debug) {
-        console.error(`Unknown state during "crawl('${url})'":`, error, data);
-      }
-
-      // Fail and log error
-      return {
-        sites: [],
-        errors: [
-          {
-            url,
-            type: data.name || "UnknownStateError",
-            message: "An unknown error occurred.",
-            retries: retryIndex,
-          },
-        ],
-      };
-    } catch (e) {
-      if (this.debug) {
-        this.debug && console.error(e);
-      }
-    }
   }
 
   /**
