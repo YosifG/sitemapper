@@ -76,6 +76,7 @@ export default class Sitemapper {
     try {
       // crawl the URL
       results = await this.crawl(url);
+      console.log("ABCDEFGH----------------------")
     } catch (e) {
       // show errors that may occur
       if (this.debug) {
