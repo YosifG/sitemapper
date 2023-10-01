@@ -4,6 +4,8 @@ import Sitemapper from '../assets/sitemapper.mjs';
 // URL to be crawled
 const exampleURL = 'https://www.edna.bg/sitemap.xml';
 
+
+
 // Instantiate an instance
 const sitemapper = new Sitemapper({
   url: exampleURL, // url to crawl
@@ -16,6 +18,7 @@ const sitemapper = new Sitemapper({
 /**
  *  Async/await example of using sitemapper.
  */
+/** 
 (async () => {
   try {
     // fetch the example url to get all sites
@@ -28,3 +31,12 @@ const sitemapper = new Sitemapper({
     console.error(error);
   }
 })();
+*/
+
+const sitemap = new Sitemapper({
+  timeout: 4000,
+  debug:true
+});
+
+const site_urls_response = await sitemap.fetch(exampleURL)
+console.log(site_urls_response)
